@@ -34,7 +34,8 @@ import os
 import sys
 import math
 import pickle
-from sklearn.svm import SVC
+
+from LSH_KNN import LSH_KNN
 
 import progressbar
 
@@ -77,7 +78,7 @@ def main(args):
             embedding_size = embeddings.get_shape()[1]
             
             # Run forward pass to calculate embeddings
-            print('Calculating features for images')
+            print('Calculating features for images: %s' % args.mode)
             nrof_images = len(paths)
             nrof_batches_per_epoch = int(math.ceil(1.0*nrof_images / args.batch_size))
             bar = progressbar.ProgressBar(maxval=nrof_batches_per_epoch,
@@ -97,7 +98,7 @@ def main(args):
             if (args.mode=='TRAIN'):
                 # Train classifier
                 print('Training classifier')
-                model = SVC(kernel='linear', probability=True)
+                model = LSH_KNN(n_neighbors=6, min_hash_match=3)
                 model.fit(emb_array, labels)
             
                 # Create a list of class names
@@ -116,12 +117,12 @@ def main(args):
 
                 print('Loaded classifier model from file "%s"' % classifier_filename_exp)
 
-                predictions = model.predict_proba(emb_array)
-                best_class_indices = np.argmax(predictions, axis=1)
-                best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
+                predictions = model.predict(emb_array)
+                best_class_indices = predictions
+                # best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
                 
                 for i in range(len(best_class_indices)):
-                    print('%4d  %s: %.3f' % (i, class_names[best_class_indices[i]], best_class_probabilities[i]))
+                    print('%4d  %s' % (i, class_names[best_class_indices[i]]))
                     
                 accuracy = np.mean(np.equal(best_class_indices, labels))
                 print('Accuracy: %.3f' % accuracy)

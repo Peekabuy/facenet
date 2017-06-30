@@ -34,7 +34,8 @@ import os
 import sys
 import math
 import pickle
-from sklearn.svm import SVC
+
+from sklearn.neighbors import KNeighborsClassifier
 
 import progressbar
 
@@ -77,32 +78,44 @@ def main(args):
             embedding_size = embeddings.get_shape()[1]
             
             # Run forward pass to calculate embeddings
-            print('Calculating features for images')
+            print('Calculating features for images: %s' % args.mode)
             nrof_images = len(paths)
             nrof_batches_per_epoch = int(math.ceil(1.0*nrof_images / args.batch_size))
             bar = progressbar.ProgressBar(maxval=nrof_batches_per_epoch,
                widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
             bar.start()
             emb_array = np.zeros((nrof_images, embedding_size))
-            for i in range(nrof_batches_per_epoch):
-                start_index = i*args.batch_size
-                end_index = min((i+1)*args.batch_size, nrof_images)
-                paths_batch = paths[start_index:end_index]
-                images = facenet.load_data(paths_batch, False, False, args.image_size)
-                feed_dict = { images_placeholder:images, phase_train_placeholder:False }
-                emb_array[start_index:end_index,:] = sess.run(embeddings, feed_dict=feed_dict)
-            	bar.update(i)
+	    if(args.embeddings != '' and os.path.isfile(args.embeddings)):
+		emb_array = np.load(args.embeddings)
+	    else: 
+                for i in range(nrof_batches_per_epoch):
+                    start_index = i*args.batch_size
+                    end_index = min((i+1)*args.batch_size, nrof_images)
+                    paths_batch = paths[start_index:end_index]
+                    images = facenet.load_data(paths_batch, False, False, args.image_size)
+                    feed_dict = { images_placeholder:images, phase_train_placeholder:False }
+                    emb_array[start_index:end_index,:] = sess.run(embeddings, feed_dict=feed_dict)
+                    bar.update(i)
+		if args.embeddings != '':
+		    np.save(args.embeddings, emb_array)
             classifier_filename_exp = os.path.expanduser(args.classifier_filename)
-
-            if (args.mode=='TRAIN'):
+	    if (args.mode=='TRAIN'):
+            
                 # Train classifier
                 print('Training classifier')
-                model = SVC(kernel='linear', probability=True)
+                model = KNeighborsClassifier(n_neighbors=args.n_neighbors, weights='distance')
                 model.fit(emb_array, labels)
-            
                 # Create a list of class names
                 class_names = [ cls.name.replace('_', ' ') for cls in dataset]
-
+		
+		if args.train_class_centers != '':
+		    class_counts = np.zeros(len(class_names))
+		    class_sums = np.zeros((len(class_names), 128))
+		    for i in range(len(emb_array)):
+			class_sums[labels[i]] = np.add(class_sums[labels[i]], emb_array[i])
+			class_counts[labels[i]]+=1
+		    class_centers = np.divide(class_sums, class_counts[:,np.newaxis])
+		    np.save(args.train_class_centers, class_centers)
                 # Saving classifier model
                 with open(classifier_filename_exp, 'wb') as outfile:
                     pickle.dump((model, class_names), outfile)
@@ -116,12 +129,12 @@ def main(args):
 
                 print('Loaded classifier model from file "%s"' % classifier_filename_exp)
 
-                predictions = model.predict_proba(emb_array)
-                best_class_indices = np.argmax(predictions, axis=1)
-                best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
+                predictions = model.predict(emb_array)
+                best_class_indices = predictions
+                # best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
                 
                 for i in range(len(best_class_indices)):
-                    print('%4d  %s: %.3f' % (i, class_names[best_class_indices[i]], best_class_probabilities[i]))
+                    print('%4d  predicted: %s, actual: %s' % (i, class_names[best_class_indices[i]], class_names[labels[i]]))
                     
                 accuracy = np.mean(np.equal(best_class_indices, labels))
                 print('Accuracy: %.3f' % accuracy)
@@ -168,7 +181,12 @@ def parse_arguments(argv):
         help='Only include classes with at least this number of images in the dataset', default=20)
     parser.add_argument('--nrof_train_images_per_class', type=int,
         help='Use this number of images from each class for training and the rest for testing', default=10)
-    
+    parser.add_argument('--embeddings', type=str,
+	help='File to save/load FaceNet embeddings', default='')
+    parser.add_argument('--train_class_centers', type=str,
+	help='File to save class centers after training', default='')
+    parser.add_argument('--n_neighbors', type=int,
+	help='Number of neighbors to use in KNN', default=20)
     return parser.parse_args(argv)
 
 if __name__ == '__main__':

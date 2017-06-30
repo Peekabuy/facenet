@@ -237,7 +237,9 @@ def crop(image, random_crop, image_size):
             (h, v) = (np.random.randint(-diff, diff+1), np.random.randint(-diff, diff+1))
         else:
             (h, v) = (0,0)
-        image = image[(sz1-sz2+v):(sz1+sz2+v),(sz1-sz2+h):(sz1+sz2+h),:]
+	#sz1=150
+	#sz2=80
+	image = image[(sz1-sz2+v):(sz1+sz2+v),(sz1-sz2+h):(sz1+sz2+h),:]
     return image
   
 def flip(image, random_flip):
@@ -256,13 +258,13 @@ def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhi
     images = np.zeros((nrof_samples, image_size, image_size, 3))
     for i in range(nrof_samples):
         img = misc.imread(image_paths[i])
-        if img.ndim == 2:
+	if img.ndim == 2:
             img = to_rgb(img)
         if do_prewhiten:
             img = prewhiten(img)
         img = crop(img, do_random_crop, image_size)
         img = flip(img, do_random_flip)
-        images[i,:,:,:] = img
+	images[i,:,:,:] = img
     return images
 
 def get_label_batch(label_data, batch_size, batch_index):
@@ -336,9 +338,12 @@ def get_dataset(paths):
                 images = os.listdir(facedir)
                 image_paths = [os.path.join(facedir,img) for img in images]
                 dataset.append(ImageClass(class_name, image_paths))
-  
     return dataset
-
+def get_image_paths(data_dir):
+    path_exp = os.path.expanduser(data_dir)
+    images = os.listdir(path_exp)
+    image_paths = [os.path.join(path_exp,img) for img in images]
+    return image_paths
 def split_dataset(dataset, split_ratio, mode):
     if mode=='SPLIT_CLASSES':
         nrof_classes = len(dataset)
