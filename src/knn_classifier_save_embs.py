@@ -27,6 +27,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.contrib.tensorboard.plugins import projector
 import numpy as np
 import argparse
 import facenet
@@ -38,9 +39,9 @@ import pickle
 from sklearn.neighbors import KNeighborsClassifier
 
 import progressbar
-
 def main(args):
   
+    LOG_DIR = '/data/tf_logs'
     with tf.Graph().as_default():
       
         with tf.Session() as sess:
@@ -61,9 +62,16 @@ def main(args):
             for cls in dataset:
                 assert(len(cls.image_paths)>0, 'There must be at least one image for each class in the dataset')            
 
-                 
-            paths, labels = facenet.get_image_paths_and_labels(dataset)
             
+            class_names = [ cls.name.replace('_', ' ') for cls in dataset]
+            paths, labels = facenet.get_image_paths_and_labels(dataset) 
+            tsvstr = 'Index\tName\n'
+            for i in range(len(paths)):
+                tsvstr += '%d\t%s\n'%(labels[i], class_names[labels[i]])
+            with open(os.path.join(LOG_DIR, 'metadata.tsv'), 'w') as tsvfile:
+                tsvfile.write(tsvstr)
+            np.save('labels', labels)
+            pickle.dump(class_names, open('class_names.pkl', 'w'))            
             print('Number of classes: %d' % len(dataset))
             print('Number of images: %d' % len(paths))
             
@@ -73,11 +81,11 @@ def main(args):
             
             # Get input and output tensors
             images_placeholder = tf.get_default_graph().get_tensor_by_name("input:0")
-            embeddings = tf.get_default_graph().get_tensor_by_name("embeddings:0")
+            embeddings_var = tf.get_default_graph().get_tensor_by_name("embeddings:0")
             phase_train_placeholder = tf.get_default_graph().get_tensor_by_name("phase_train:0")
-            embedding_size = embeddings.get_shape()[1]
+            embedding_size = embeddings_var.get_shape()[1]
             
-            # Run forward pass to calculate embeddings
+            # Run forward pass to calculate embeddings_var
             print('Calculating features for images: %s' % args.mode)
             nrof_images = len(paths)
             nrof_batches_per_epoch = int(math.ceil(1.0*nrof_images / args.batch_size))
@@ -94,8 +102,16 @@ def main(args):
                     paths_batch = paths[start_index:end_index]
                     images = facenet.load_data(paths_batch, False, False, args.image_size)
                     feed_dict = { images_placeholder:images, phase_train_placeholder:False }
-                    emb_array[start_index:end_index,:] = sess.run(embeddings, feed_dict=feed_dict)
+                    emb_array[start_index:end_index,:] = sess.run(embeddings_var, feed_dict=feed_dict)
+                    #saver = tf.train.Saver()
+                    #saver.save(sess, os.path.join(LOG_DIR, 'model.ckpt', i))
                     bar.update(i)
+                config = projector.ProjectorConfig()
+                embeddings = config.embeddings.add()
+                embeddings.tensor_name = embeddings_var.name
+                embeddings.metadata_path = os.path.join(LOG_DIR, 'metadata.tsv')
+                summary_writer = tf.summary.FileWriter(LOG_DIR)
+                projector.visualize_embeddings(summary_writer, config)
 		if args.embeddings != '':
 		    np.save(args.embeddings, emb_array)
             classifier_filename_exp = os.path.expanduser(args.classifier_filename)
@@ -103,7 +119,7 @@ def main(args):
             
                 # Train classifier
                 print('Training classifier')
-                model = KNeighborsClassifier(n_neighbors=args.n_neighbors, weights='distance')
+                model = KNeighborsClassifier(n_neighbors=args.n_neighbors, weights='uniform')
                 model.fit(emb_array, labels)
                 # Create a list of class names
                 class_names = [ cls.name.replace('_', ' ') for cls in dataset]

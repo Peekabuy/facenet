@@ -40,7 +40,7 @@ from LSH_KNN import LSH_KNN
 import progressbar
 
 def main(args):
-  
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  
     with tf.Graph().as_default():
       
         with tf.Session() as sess:
@@ -103,7 +103,7 @@ def main(args):
             
                 # Train classifier
                 print('Training classifier')
-                model = LSH_KNN(n_neighbors=args.n_neighbors, min_hash_match=3)
+                model = LSH_KNN(n_neighbors=args.n_neighbors, min_hash_match=2, weights='uniform')
                 model.fit(emb_array, labels)
             
                 # Create a list of class names
@@ -130,7 +130,8 @@ def main(args):
                     print('%4d  predicted: %s, actual: %s' % (i, class_names[best_class_indices[i]], class_names[labels[i]]))
                     
                 accuracy = np.mean(np.equal(best_class_indices, labels))
-                print('Accuracy: %.3f' % accuracy)
+		print('Accuracy')
+                print(accuracy)
                 
             
 def split_dataset(dataset, min_nrof_images_per_class, nrof_train_images_per_class):

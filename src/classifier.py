@@ -84,20 +84,25 @@ def main(args):
                widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
             bar.start()
             emb_array = np.zeros((nrof_images, embedding_size))
-            for i in range(nrof_batches_per_epoch):
-                start_index = i*args.batch_size
-                end_index = min((i+1)*args.batch_size, nrof_images)
-                paths_batch = paths[start_index:end_index]
-                images = facenet.load_data(paths_batch, False, False, args.image_size)
-                feed_dict = { images_placeholder:images, phase_train_placeholder:False }
-                emb_array[start_index:end_index,:] = sess.run(embeddings, feed_dict=feed_dict)
-            	bar.update(i)
+            if(args.embeddings != '' and os.path.isfile(args.embeddings)):
+                emb_array = np.load(args.embeddings)
+            else:
+                for i in range(nrof_batches_per_epoch):
+                    start_index = i*args.batch_size
+                    end_index = min((i+1)*args.batch_size, nrof_images)
+                    paths_batch = paths[start_index:end_index]
+                    images = facenet.load_data(paths_batch, False, False, args.image_size)
+                    feed_dict = { images_placeholder:images, phase_train_placeholder:False }
+                    emb_array[start_index:end_index,:] = sess.run(embeddings, feed_dict=feed_dict)
+                    bar.update(i)
+                if args.embeddings != '':
+                    np.save(args.embeddings, emb_array)
             classifier_filename_exp = os.path.expanduser(args.classifier_filename)
 
             if (args.mode=='TRAIN'):
                 # Train classifier
                 print('Training classifier')
-                model = SVC(kernel='linear', probability=True)
+                model = SVC(kernel='rbf', probability=True, decision_function_shape='ovr')
                 model.fit(emb_array, labels)
             
                 # Create a list of class names
@@ -168,7 +173,8 @@ def parse_arguments(argv):
         help='Only include classes with at least this number of images in the dataset', default=20)
     parser.add_argument('--nrof_train_images_per_class', type=int,
         help='Use this number of images from each class for training and the rest for testing', default=10)
-    
+    parser.add_argument('--embeddings', type=str,
+        help='File to save/load FaceNet embeddings', default='') 
     return parser.parse_args(argv)
 
 if __name__ == '__main__':
